@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Eco Bot Beggar Mode</title>
+  <style>
+    html, body { margin: 0; overflow: hidden; background: #111; color: white; font-family: sans-serif; }
+    canvas { display: block; }
+    #leaderboard {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.6);
+      padding: 10px;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="leaderboard">Loading leaderboard...</div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const myColor = '#' + Math.floor(Math.random() * 16777215).toString(16);
+const playerId = 'Player_' + Math.floor(Math.random() * 1000);
+let pos = { x: Math.random() * canvas.width, y: Math.random() * canvas.height };
+let players = {}, trash = {}, scores = {}, npcs = {}, shopZone = { x: 100, y: 100, w: 80, h: 80 };
+let cooldown = 0;
+
+document.addEventListener('keydown', e => {
+  const step = 5;
+  if (e.key === 'ArrowUp') pos.y -= step;
+  if (e.key === 'ArrowDown') pos.y += step;
+  if (e.key === 'ArrowLeft') pos.x -= step;
+  if (e.key === 'ArrowRight') pos.x += step;
+  socket.emit('move', pos);
+  if (e.key.toLowerCase() === 'b' && cooldown === 0) {
+    socket.emit('beg');
+    cooldown = 60;
+  }
+});
+
+socket.emit('newPlayer', { ...pos, color: myColor, name: playerId });
+
+socket.on('players', data => players = data);
+socket.on('trash', data => trash = data);
+socket.on('scores', data => scores = data);
+socket.on('npcs', data => npcs = data);
+
+function drawText(text, x, y, color = 'white') {
+  ctx.fillStyle = color;
+  ctx.font = '14px sans-serif';
+  ctx.fillText(text, x, y);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (cooldown > 0) cooldown--;
+
+  // Draw trash
+  for (let id in trash) {
+    const t = trash[id];
+    ctx.fillStyle = 'gray';
+    ctx.fillRect(t.x, t.y, 20, 20);
+  }
+
+  // Draw NPCs
+  for (let id in npcs) {
+    const n = npcs[id];
+    ctx.fillStyle = 'blue';
+    ctx.fillRect(n.x, n.y, 30, 30);
+    drawText('💬 Stranger', n.x - 8, n.y - 6);
+  }
+
+  // Draw players
+  for (let id in players) {
+    const p = players[id];
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, 30, 30);
+    drawText(p.name, p.x, p.y - 8);
+    if (id === socket.id) pos = { x: p.x, y: p.y };
+  }
+
+  // Draw shop
+  ctx.strokeStyle = 'lime';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(shopZone.x, shopZone.y, shopZone.w, shopZone.h);
+  drawText('🛒 SHOP', shopZone.x, shopZone.y - 6);
+
+  // Leaderboard
+  const sorted = Object.values(scores).sort((a, b) => b.coins - a.coins);
+  let board = `<b>💰 Leaderboard</b><br>`;
+  sorted.forEach((s, i) => {
+    board += `${i+1}. ${s.name}: ${s.coins} coins<br>`;
+  });
+  document.getElementById('leaderboard').innerHTML = board;
+
+  requestAnimationFrame(draw);
+}
+draw();
+</script>
+</body>
+</html>
